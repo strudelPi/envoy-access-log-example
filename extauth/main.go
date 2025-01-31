@@ -8,65 +8,69 @@ import (
 	"net"
 	"strings"
 
-	"github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
-	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v2"
-	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type"
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	auth_pb "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	"github.com/gogo/googleapis/google/rpc"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 )
 
-// empty struct because this isn't a fancy example
-type AuthorizationServer struct{}
+// struct with check method
+type AuthServer struct{}
 
-// inject a header that can be used for future rate limiting
-func (a *AuthorizationServer) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
-	authHeader, ok := req.Attributes.Request.Http.Headers["authorization"]
+func (server *AuthServer) Check(
+	ctx context.Context,
+	request *auth_pb.CheckRequest,
+) (*auth_pb.CheckResponse, error) {
+	authHeader, ok := request.Attributes.Request.Http.Headers["authorization"]
 	var splitToken []string
 	if ok {
 		splitToken = strings.Split(authHeader, "Bearer ")
-	}
-	if len(splitToken) == 2 {
-		token := splitToken[1]
-		sha := sha256.New()
-		sha.Write([]byte(token))
-		tokenSha := base64.StdEncoding.EncodeToString(sha.Sum(nil))
 
-		// valid tokens have exactly 3 characters. #secure.
 		// Normally this is where you'd go check with the system that knows if it's a valid token.
+		if len(splitToken) == 2 {
+			token := splitToken[1]
+			sha := sha256.New()
+			sha.Write([]byte(token))
+			tokenSha := base64.StdEncoding.EncodeToString(sha.Sum(nil))
 
-		if len(token) == 3 {
-			return &auth.CheckResponse{
-				Status: &rpc.Status{
-					Code: int32(rpc.OK),
-				},
-				HttpResponse: &auth.CheckResponse_OkResponse{
-					OkResponse: &auth.OkHttpResponse{
-						Headers: []*core.HeaderValueOption{
-							{
-								Header: &core.HeaderValue{
-									Key:   "x-ext-auth-ratelimit",
-									Value: tokenSha,
+			// valid tokens have exactly 3 characters. #secure.
+			if len(token) == 3 {
+				return &auth_pb.CheckResponse{
+					Status: &status.Status{
+						Code: int32(rpc.OK),
+					},
+					HttpResponse: &auth_pb.CheckResponse_OkResponse{
+						OkResponse: &auth_pb.OkHttpResponse{
+							Headers: []*corev3.HeaderValueOption{
+								{
+									Header: &corev3.HeaderValue{
+										Key:   "x-ext-auth-ratelimit",
+										Value: tokenSha,
+									},
 								},
 							},
 						},
 					},
-				},
-			}, nil
+				}, nil
+			}
 		}
 	}
-	return &auth.CheckResponse{
-		Status: &rpc.Status{
+	return &auth_pb.CheckResponse{
+		Status: &status.Status{
 			Code: int32(rpc.UNAUTHENTICATED),
 		},
-		HttpResponse: &auth.CheckResponse_DeniedResponse{
-			DeniedResponse: &auth.DeniedHttpResponse{
-				Status: &envoy_type.HttpStatus{
-					Code: envoy_type.StatusCode_Unauthorized,
+		HttpResponse: &auth_pb.CheckResponse_DeniedResponse{
+			DeniedResponse: &auth_pb.DeniedHttpResponse{
+				Status: &typev3.HttpStatus{
+					Code: typev3.StatusCode_Unauthorized,
 				},
 				Body: "Need an Authorization Header with a 3 character bearer token! #secure",
 			},
 		},
 	}, nil
+
 }
 
 func main() {
@@ -78,8 +82,8 @@ func main() {
 	log.Printf("listening on %s", lis.Addr())
 
 	grpcServer := grpc.NewServer()
-	authServer := &AuthorizationServer{}
-	auth.RegisterAuthorizationServer(grpcServer, authServer)
+	authServer := &AuthServer{}
+	auth_pb.RegisterAuthorizationServer(grpcServer, authServer)
 
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
