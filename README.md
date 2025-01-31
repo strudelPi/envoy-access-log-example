@@ -6,6 +6,7 @@ The premise is to
 * Pass that header's value to the rate limiter
 * Use it for rate limiting
 
+![architecture](docs/envoy_arch.png)
 
 # The moving parts
 
@@ -81,50 +82,40 @@ The `backend` is a simple go http service. It prints the headers it gets to make
 
 # Getting ready to build
 
-* clone the repo
-* You'll also need a local copy of lyft's ratelimit. Submodules were causing some challenges, so it's easiest to `git clone git@github.com:lyft/ratelimit.git`
-
-
-I had to make some manual tweaks to the `ratelimit` codebase to get it to build -- which may be operator error:
-
-* `mkdir ratelimit/vendor` (the `Dockerfile` expects it to exist already)
-* add a `COPY proto proto` to the `Dockerfile` with the rest of the `COPY` statements
-
-Finally run:
-
-* `docker-compose up`. The first one will take some time as it builds everything.
+* Clone this repo
+* You'll also need a local copy of lyft's ratelimit. Just clone te ratelimit repo `git clone git@github.com:lyft/ratelimit.git`
+* Run `docker-compose up`. The first one will take some time as it builds everything or pass `--build` to rebuild the code.
 
 # Testing
 
 You can ensure that the full stack is working with a simple curl:
 
 ```
-$ curl -v -H "Authorization: Bearer foo" http://localhost:8010                                                                                
-* Rebuilt URL to: http://localhost:8010/
-*   Trying 127.0.0.1...
-* TCP_NODELAY set
+$ curl -v -H "Authorization: Bearer foo" http://localhost:8010 
+*   Trying 127.0.0.1:8010...
 * Connected to localhost (127.0.0.1) port 8010 (#0)
 > GET / HTTP/1.1
 > Host: localhost:8010
-> User-Agent: curl/7.61.1
+> User-Agent: curl/7.81.0
 > Accept: */*
 > Authorization: Bearer foo
 > 
+* Mark bundle as not supporting multiuse
 < HTTP/1.1 200 OK
-< date: Tue, 21 May 2019 00:23:12 GMT
-< content-length: 270
-< content-type: text/plain; charset=utf-8< x-envoy-upstream-service-time: 0
+< date: Fri, 31 Jan 2025 08:56:38 GMT
+< content-length: 226
+< content-type: text/plain; charset=utf-8
+< x-envoy-upstream-service-time: 0
 < server: envoy
 < 
 Oh, Hello!
-X-Request-Id: 6c03f5f4-e580-4d8f-aee1-7e62ba2c9b30
+Accept: */*
+X-Forwarded-Proto: http
+X-Request-Id: 890eac68-4145-48b6-ad27-6b7f2347275e
 X-Ext-Auth-Ratelimit: LCa0a2j/xo/5m0U8HTBBNBNCLXBkg7+g+YpeiGJm564=
 X-Envoy-Expected-Rq-Timeout-Ms: 15000
-User-Agent: curl/7.61.1
-Accept: */*
-Authorization: Bearer fooX-Forwarded-Proto: http
 * Connection #0 to host localhost left intact
-Content-Length: 0
+User-Agent: curl/7.81.0
 ```
 
 There are also some Go tests available in the `vegeta` directory.
