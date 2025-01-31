@@ -49,7 +49,7 @@ services:
     ports:
       - "8123:8123"
 
-  ratelimit:
+  rate_limit_cluster:
     build:
       context: ratelimit
     command: /bin/ratelimit
