@@ -16,30 +16,12 @@ static_resources:
           stat_prefix: ingress_http
           codec_type: AUTO
           http_filters:
-          - name: envoy.filters.http.ext_authz
-            typed_config:
-              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
-              stat_prefix: extauth
-              grpc_service:
-                envoy_grpc:
-                  cluster_name: extauth
-              include_peer_certificate: true
-          - name: envoy.filters.http.ratelimit
-            typed_config:
-              "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimit
-              domain: backend
-              failure_mode_deny: false
-              rate_limit_service:
-                grpc_service:
-                  envoy_grpc:
-                    cluster_name: rate_limit_cluster
-                  timeout: 0.25s
           - name: envoy.filters.http.router
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
           route_config:
             name: local_route
-            request_headers_to_remove: [ "Authorization" ]
+            # request_headers_to_remove: [ "Authorization" ]
             virtual_hosts:
             - name: local_service
               domains: [ "*" ]
@@ -47,18 +29,28 @@ static_resources:
               - match: { prefix: "/slowpath" }
                 route:
                   cluster: backend
-                  rate_limits:
-                  - stage: 0
-                    actions:
-                    - { generic_key: { "descriptor_value": "slowpath" } }
               - match: { prefix: "/" }
                 route:
                   cluster: backend
-                  rate_limits:
-                  - stage: 0
-                    actions:
-                    - { request_headers: { header_name: "x-ext-auth-ratelimit", descriptor_key: "ratelimitkey" } }
-                    - { request_headers: { header_name: ":path", descriptor_key: "path" } }
+          access_log:
+          - name: envoy.access_loggers.http_grpc
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.access_loggers.grpc.v3.HttpGrpcAccessLogConfig
+              common_config:
+                log_name: access_log_cluster_http
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: access_log_cluster
+                transport_api_version: V3
+          - name: envoy.access_loggers.tcp_grpc
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.access_loggers.grpc.v3.TcpGrpcAccessLogConfig
+              common_config:
+                log_name: access_log_cluster_tcp
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: access_log_cluster
+                transport_api_version: V3
 
   clusters:
   - name: backend
@@ -74,32 +66,23 @@ static_resources:
               socket_address:
                 address: backend
                 port_value: 8123
-
-  - name: extauth
-    type: STRICT_DNS
+  - name: access_log_cluster
     connect_timeout: 0.25s
-    http2_protocol_options: {}
-    load_assignment:
-      cluster_name: extauth
-      endpoints:
-      - lb_endpoints:
-        - endpoint:
-            address:
-              socket_address:
-                address: extauth
-                port_value: 4000
-
-  - name: rate_limit_cluster
     type: STRICT_DNS
-    connect_timeout: 0.25s
     lb_policy: round_robin
-    http2_protocol_options: {}
     load_assignment:
-      cluster_name: rate_limit_cluster
+      cluster_name: access_log_cluster
       endpoints:
       - lb_endpoints:
         - endpoint:
             address:
               socket_address:
-                address: rate_limit_cluster
-                port_value: 8081
+                address: access_log_service
+                port_value: 18000
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        common_http_protocol_options:
+          idle_timeout: 5s
+        explicit_http_config:
+          http2_protocol_options: {} # tells envoy that only http2 is to be used on this backend cluster
