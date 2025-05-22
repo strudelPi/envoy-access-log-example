@@ -1,6 +1,5 @@
 services:
   envoy:
-    # image: docker.ops.iszn.cz/labrador/envoy:1.32.3-szn1
     image: envoyproxy/envoy:v1.32.3
     command: envoy -c /etc/envoy.yaml -l debug --service-cluster envoy
     # build:
