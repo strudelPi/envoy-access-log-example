@@ -1,75 +1,54 @@
-version: "3.7"
 services:
-
   envoy:
-    build:
-      context: .
-      dockerfile: Dockerfile-envoy
+    # image: docker.ops.iszn.cz/labrador/envoy:1.32.3-szn1
+    image: envoyproxy/envoy:v1.32.3
+    command: envoy -c /etc/envoy.yaml -l debug --service-cluster envoy
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile-envoy
     volumes:
       - ./envoy.yaml:/etc/envoy.yaml
     networks:
       - envoymesh
-    expose:
-      - "8001"
-      - "8010"
+    # expose: #no need, the other services don't communicate with envoy
+    #   - "8001"
+    #   - "8010"
     ports:
       - "8001:8001"
       - "8010:8010"
-
-  redis:
-    build:
-      context: .
-      dockerfile: Dockerfile-redis
-    networks:
-      envoymesh:
-        aliases:
-          - redis_server
-    expose:
-      - "6379"
-    ports:
-      - "6379:6379"
-
-  extauth:
-    build:
-      context: extauth
-    networks:
-      - envoymesh
-    expose:
-      - "4000"
-    ports:
-      - "4000:4000"
-
+      - "8020:8020"
+    # network_mode: host
   backend:
-    build:
-      context: backend
+    image: nginx:latest
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
     networks:
       - envoymesh
     expose:
       - "8123"
-    ports:
-      - "8123:8123"
-
-  rate_limit_cluster:
-    build:
-      context: ratelimit
-    command: /bin/ratelimit
-    ports:
-      - 8080:8080
-      - 8081:8081
-      - 6070:6070
-    depends_on:
-      - redis
+    # ports: not needed on host netw unless debugging
+    #   - "8123:8123"
+    # network_mode: host
+  backend2:
+    image: nginx:latest
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
     networks:
       - envoymesh
-    volumes:
-      - ./ratelimit-data:/data
-    environment:
-      - USE_STATSD=false
-      - LOG_LEVEL=debug
-      - REDIS_SOCKET_TYPE=tcp
-      - REDIS_URL=redis:6379
-      - RUNTIME_ROOT=/data
-      - RUNTIME_SUBDIRECTORY=ratelimit
-
+    expose:
+      - "8123"
+  backend-ws:
+    image: ghcr.io/vi/websocat
+    command: -s 0.0.0.0:8765
+    networks:
+      - envoymesh
+    expose:
+      - "8765"
+  access_log_service:
+    image: envoy_access_logs:v0.3.2
+    networks:
+      - envoymesh
+    expose:
+      - "18000"
 networks:
   envoymesh: {}
